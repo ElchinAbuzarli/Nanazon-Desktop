@@ -9,6 +9,8 @@ const STALE_FORCE_RECONNECT_MS = 240000;
 let socket: Socket | null = null;
 let token: string | null = null;
 let userId: string | null = null;
+let userName: string | null = null;
+let userRole: string | null = null;
 
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let lastIncomingAt = Date.now();
@@ -142,15 +144,17 @@ export function connectSocket(email: string, password: string): Promise<{ token:
       socket = null;
     });
 
-    socket.on("loginSuccess", (data: { token: string; userId: string }) => {
+    socket.on("loginSuccess", (data: { token: string; userId: string; name?: string; role?: string }) => {
       if (settled) return;
       settled = true;
       clearTimeout(loginTimeout);
       token = data.token;
       userId = data.userId;
+      userName = data.name || null;
+      userRole = data.role || null;
       startKeepAliveLoop();
       markIncomingActivity();
-      resolve({ token: data.token, userId: data.userId });
+      resolve({ token: data.token, userId: data.userId, name: data.name, role: data.role } as any);
     });
 
     socket.on("loginError", () => {
@@ -240,11 +244,15 @@ export function disconnectSocket() {
     socket = null;
     token = null;
     userId = null;
+    userName = null;
+    userRole = null;
   }
 }
 
 export function getToken() { return token; }
 export function getUserId() { return userId; }
+export function getUserName() { return userName; }
+export function getUserRole() { return userRole; }
 export function getSocket() { return socket; }
 
 export async function sendHandshake(reason: string) {

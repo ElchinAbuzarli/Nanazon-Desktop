@@ -6,13 +6,14 @@ import Login, { initializeSocketListeners } from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import Toast, { showToast } from "./components/Toast";
 import LanguageSwitcher from "./components/LanguageSwitcher";
-import { connectSocketWithToken, listen, sendHandshake, disconnectSocket } from "./services/socket";
+import { connectSocketWithToken, listen, sendHandshake, disconnectSocket, getUserName, getUserRole } from "./services/socket";
 import "./App.css";
 
 type Page = "loading" | "login" | "dashboard";
 
 function AppInner() {
   const [page, setPage] = useState<Page>("loading");
+  const [userInfo, setUserInfo] = useState<{ name: string; device: string }>({ name: "", device: "" });
   // useI18n() called to keep getT() in sync with current language
   useI18n();
 
@@ -50,6 +51,11 @@ function AppInner() {
       });
 
       await sendHandshake("startup");
+      // Get device info for display
+      try {
+        const deviceInfo = await invoke<{ device_name: string }>("get_device_info");
+        setUserInfo({ name: getUserName() || "", device: deviceInfo?.device_name || "" });
+      } catch { /* ignore */ }
       showToast(getT()("session.autoLogin"), getT()("login.connectionActive"));
       setPage("dashboard");
     } catch (err) {
@@ -63,7 +69,11 @@ function AppInner() {
     invoke("minimize_to_tray").catch(() => {});
   }
 
-  function handleLoginSuccess(_token: string, _userId: string) {
+  async function handleLoginSuccess(_token: string, _userId: string) {
+    try {
+      const deviceInfo = await invoke<{ device_name: string }>("get_device_info");
+      setUserInfo({ name: getUserName() || "", device: deviceInfo?.device_name || "" });
+    } catch { /* ignore */ }
     setPage("dashboard");
   }
 
@@ -119,7 +129,7 @@ function AppInner() {
           <Login onLoginSuccess={handleLoginSuccess} />
         )}
         {page === "dashboard" && (
-          <Dashboard onLogout={handleLogout} />
+          <Dashboard onLogout={handleLogout} userName={userInfo.name} deviceName={userInfo.device} />
         )}
       </div>
 

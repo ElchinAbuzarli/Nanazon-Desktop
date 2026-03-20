@@ -29,6 +29,7 @@ const en = {
 
   // Dashboard
   "brand.dashboard": "Control Center",
+  "dash.welcome": "Welcome",
   "dash.connected": "Connected",
   "dash.statusDetail": "System is online and ready. Visit the client panel to manage your current orders.",
   "dash.active": "Active",
@@ -38,6 +39,11 @@ const en = {
   "dash.secure": "Secure",
   "dash.channel": "Channel",
   "dash.disconnect": "Disconnect",
+  "dash.howItWorks": "How does it work?",
+  "dash.step1": "Keep this app running in the background while you use the service.",
+  "dash.step2": "Go to nanazon.com panel, find your active package and click the Run button.",
+  "dash.step3": "The browser will open automatically on this device with your package ready.",
+  "dash.step4": "Do not close this app while using the service. It manages the secure connection.",
 
   // Tasks
   "task.new": "New Task",
@@ -70,6 +76,7 @@ const ru: typeof en = {
   "session.deviceLimit": "Вы достигли максимального лимита устройств.",
 
   "brand.dashboard": "Центр управления",
+  "dash.welcome": "Добро пожаловать",
   "dash.connected": "Подключено",
   "dash.statusDetail": "Система онлайн и готова к работе. Перейдите в клиентскую панель для управления заказами.",
   "dash.active": "Активна",
@@ -79,6 +86,11 @@ const ru: typeof en = {
   "dash.secure": "Защищён",
   "dash.channel": "Канал",
   "dash.disconnect": "Отключиться",
+  "dash.howItWorks": "Как это работает?",
+  "dash.step1": "Оставьте приложение работающим в фоне, пока пользуетесь сервисом.",
+  "dash.step2": "Перейдите в панель nanazon.com, найдите активный пакет и нажмите кнопку Запуск.",
+  "dash.step3": "Браузер откроется автоматически на этом устройстве с вашим пакетом.",
+  "dash.step4": "Не закрывайте приложение во время работы. Оно управляет безопасным подключением.",
 
   "task.new": "Новая задача",
   "task.openingBrowser": "Открытие браузера и страницы...",
@@ -110,6 +122,7 @@ const tr: typeof en = {
   "session.deviceLimit": "Maksimum cihaz sınırına ulaştınız.",
 
   "brand.dashboard": "Kontrol Merkezi",
+  "dash.welcome": "Hoş Geldiniz",
   "dash.connected": "Bağlandı",
   "dash.statusDetail": "Sistem çevrimiçi ve hazır. Mevcut siparişlerinizi yönetmek için müşteri paneline gidin.",
   "dash.active": "Aktif",
@@ -119,6 +132,11 @@ const tr: typeof en = {
   "dash.secure": "Güvenli",
   "dash.channel": "Kanal",
   "dash.disconnect": "Bağlantıyı Kes",
+  "dash.howItWorks": "Nasıl çalışır?",
+  "dash.step1": "Hizmeti kullanırken bu uygulamayı arka planda çalışır durumda bırakın.",
+  "dash.step2": "nanazon.com paneline gidin, aktif paketinizi bulun ve Çalıştır butonuna tıklayın.",
+  "dash.step3": "Tarayıcı bu cihazda paketinizle otomatik olarak açılacaktır.",
+  "dash.step4": "Hizmeti kullanırken uygulamayı kapatmayın. Güvenli bağlantıyı yönetir.",
 
   "task.new": "Yeni Görev",
   "task.openingBrowser": "Tarayıcı ve sayfa açılıyor...",
@@ -150,6 +168,7 @@ const az: typeof en = {
   "session.deviceLimit": "Maksimum cihaz limitinə çatdınız.",
 
   "brand.dashboard": "İdarəetmə Mərkəzi",
+  "dash.welcome": "Xoş gəldiniz",
   "dash.connected": "Qoşulub",
   "dash.statusDetail": "Sistem onlayndır və hazırdır. Cari sifarişlərinizi idarə etmək üçün müştəri panelinə keçin.",
   "dash.active": "Aktiv",
@@ -159,6 +178,11 @@ const az: typeof en = {
   "dash.secure": "Təhlükəsiz",
   "dash.channel": "Kanal",
   "dash.disconnect": "Bağlantını Kəs",
+  "dash.howItWorks": "Necə işləyir?",
+  "dash.step1": "Xidmətdən istifadə edərkən bu proqramı arxa fonda işlək saxlayın.",
+  "dash.step2": "nanazon.com panelinə daxil olun, aktiv paketinizi tapın və Çalışdır düyməsinə basın.",
+  "dash.step3": "Brauzer bu cihazda paketinizlə avtomatik açılacaq.",
+  "dash.step4": "Xidmətdən istifadə edərkən proqramı bağlamayın. Təhlükəsiz bağlantını idarə edir.",
 
   "task.new": "Yeni Tapşırıq",
   "task.openingBrowser": "Brauzər və səhifə açılır...",
