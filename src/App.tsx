@@ -6,7 +6,7 @@ import Login, { initializeSocketListeners } from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import Toast, { showToast } from "./components/Toast";
 import LanguageSwitcher from "./components/LanguageSwitcher";
-import { connectSocketWithToken, listen, sendHandshake, disconnectSocket, getUserName, getUserRole } from "./services/socket";
+import { connectSocketWithToken, listen, sendHandshake, disconnectSocket, getUserName } from "./services/socket";
 import "./App.css";
 
 type Page = "loading" | "login" | "dashboard";
