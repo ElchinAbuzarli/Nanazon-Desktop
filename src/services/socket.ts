@@ -1,7 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { invoke } from "@tauri-apps/api/core";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "https://new-api.nanazon.com";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "https://api.nanazon.com";
 const KEEPALIVE_INTERVAL_MS = 30000;
 const STALE_HANDSHAKE_MS = 180000;
 const STALE_FORCE_RECONNECT_MS = 240000;
