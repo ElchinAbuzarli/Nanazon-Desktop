@@ -83,9 +83,9 @@ async function handleLaunch(id, opts) {
 
     const chromeOptions = {
       headless,
-      ignoreDefaultArgs: ["--disable-extensions"],
+      ignoreDefaultArgs: ["--enable-automation", "--disable-extensions"],
       ignoreHTTPSErrors: true,
-      args: mergedArgs,
+      args: [...mergedArgs, "--disable-blink-features=AutomationControlled"],
       executablePath: execPath,
       env: { ...process.env, TZ: "Europe/Istanbul" },
     };
@@ -237,6 +237,17 @@ async function handleLaunchCookies(id, opts) {
   }
 
   if (cookies) await page.setCookie(...JSON.parse(cookies));
+
+  // Close the extra about:blank tab that browser opens by default
+  try {
+    const allPages = await browser.pages();
+    for (const p of allPages) {
+      if (p !== page && p.url() === "about:blank") {
+        await p.close();
+      }
+    }
+  } catch {}
+
   await page.goto(realUrl);
   process.stderr.write(`[puppeteer] Page navigated with cookies: ${realUrl}\n`);
 
