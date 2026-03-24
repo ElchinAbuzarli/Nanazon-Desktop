@@ -33,23 +33,21 @@ if [ -z "$COMMITS" ]; then
   exit 0
 fi
 
-# Determine bump type
+# Determine bump type (major version stays fixed, changes only in minor/patch)
+#   feat!: / BREAKING CHANGE → minor bump (2.0.0 → 2.1.0)
+#   feat:                    → minor bump (2.0.0 → 2.1.0)
+#   fix: / chore: / etc      → patch bump (2.0.0 → 2.0.1)
 BUMP="patch"
 while IFS= read -r msg; do
-  # Check for breaking change (major)
-  if echo "$msg" | grep -qiE "^(feat|fix|chore|refactor|perf)!:|BREAKING CHANGE"; then
-    BUMP="major"
+  # Breaking change or new feature → minor
+  if echo "$msg" | grep -qiE "^(feat|fix|chore|refactor|perf)!:|BREAKING CHANGE|^feat(\(.*\))?:"; then
+    BUMP="minor"
     break
-  fi
-  # Check for feature (minor)
-  if echo "$msg" | grep -qiE "^feat(\(.*\))?:"; then
-    [ "$BUMP" != "major" ] && BUMP="minor"
   fi
 done <<< "$COMMITS"
 
-# Calculate new version
+# Calculate new version (major never changes automatically)
 case "$BUMP" in
-  major) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
   minor) NEW_VERSION="$MAJOR.$((MINOR + 1)).0" ;;
   patch) NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))" ;;
 esac
