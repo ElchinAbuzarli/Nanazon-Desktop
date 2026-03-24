@@ -70,8 +70,7 @@ async function handleLaunch(id, opts) {
       "--timezone-id=Europe/Istanbul",
       "--webrtc-ip-handling-policy=disable_non_proxied_udp",
       "--force-webrtc-ip-handling-policy",
-      "--window-size=1280,900",
-      "--window-position=100,50",
+      "--start-maximized",
     ];
     const mergedArgs = [...chromeArgs, ...turkeyFingerprintArgs];
 
@@ -83,6 +82,7 @@ async function handleLaunch(id, opts) {
 
     const chromeOptions = {
       headless,
+      defaultViewport: null,
       ignoreDefaultArgs: ["--enable-automation", "--disable-extensions"],
       ignoreHTTPSErrors: true,
       args: [...mergedArgs, "--disable-blink-features=AutomationControlled"],
