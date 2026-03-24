@@ -115,6 +115,7 @@ function AppInner() {
         {/* Logo - above glass card */}
         <div className="app-logo">
           <img src="/images/logo_guncel.png" alt="Nanazon" className="app-logo-img" />
+          <span style={{ display: "block", textAlign: "center", fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px", fontWeight: 500, letterSpacing: "1px" }}>v{__APP_VERSION__}</span>
         </div>
         {page === "loading" && (
           <div className="spinner-wrap">
