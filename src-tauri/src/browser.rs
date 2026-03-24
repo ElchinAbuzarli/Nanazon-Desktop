@@ -106,6 +106,49 @@ fn find_script_path() -> Result<String, String> {
     Err("puppeteer-service.cjs not found".into())
 }
 
+/// Find node binary path
+fn find_node_binary() -> String {
+    let candidates = [
+        "/usr/local/bin/node",
+        "/opt/homebrew/bin/node",
+        "/usr/bin/node",
+        // nvm
+        &format!("{}/.nvm/versions/node", std::env::var("HOME").unwrap_or_default()),
+    ];
+
+    for c in &candidates {
+        if c.contains(".nvm") {
+            // Find latest nvm node
+            if let Ok(entries) = std::fs::read_dir(c) {
+                let mut versions: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+                versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                if let Some(v) = versions.first() {
+                    let node = v.path().join("bin/node");
+                    if node.exists() {
+                        return node.to_string_lossy().to_string();
+                    }
+                }
+            }
+            continue;
+        }
+        if std::path::Path::new(c).exists() {
+            return c.to_string();
+        }
+    }
+
+    // Try PATH-based which
+    if let Ok(output) = std::process::Command::new("which").arg("node").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return path;
+            }
+        }
+    }
+
+    "node".to_string()
+}
+
 /// Ensure the puppeteer child process is running
 async fn ensure_process(state: &mut BrowserState) -> Result<(), String> {
     if state.child.is_some() {
@@ -113,9 +156,10 @@ async fn ensure_process(state: &mut BrowserState) -> Result<(), String> {
     }
 
     let script_path = find_script_path()?;
-    eprintln!("[browser] Starting puppeteer service: {}", script_path);
+    let node_bin = find_node_binary();
+    eprintln!("[browser] Starting puppeteer service: {} (node: {})", script_path, node_bin);
 
-    let mut child = Command::new("node")
+    let mut child = Command::new(&node_bin)
         .arg(&script_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
