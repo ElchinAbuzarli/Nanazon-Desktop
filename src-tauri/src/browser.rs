@@ -127,34 +127,39 @@ fn find_script_path() -> Result<String, String> {
 
 /// Find node binary path — prefer bundled node, then system node
 fn find_node_binary() -> String {
-    // 1) Bundled node next to the script (in Resources for macOS .app)
+    // 1) Check bundled node binary (inside the app bundle)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            // macOS .app bundle: Contents/MacOS/../Resources/node
-            let bundled = exe_dir.join("../Resources/node");
-            if bundled.exists() {
-                return bundled.canonicalize().unwrap().to_string_lossy().to_string();
-            }
-            // Tauri _up_ style: Contents/Resources/_up_/scripts/node
-            let bundled = exe_dir.join("../Resources/_up_/scripts/node");
-            if bundled.exists() {
-                return bundled.canonicalize().unwrap().to_string_lossy().to_string();
-            }
-            // Windows/Linux: next to exe
-            let bundled = exe_dir.join("node");
-            if bundled.exists() {
-                return bundled.to_string_lossy().to_string();
+            let bundled_paths = [
+                // macOS .app bundle: Contents/MacOS/../Resources/_up_/binaries/node
+                exe_dir.join("../Resources/_up_/binaries/node"),
+                exe_dir.join("../Resources/binaries/node"),
+                // Windows/Linux: next to exe
+                exe_dir.join("binaries/node.exe"),
+                exe_dir.join("binaries/node"),
+            ];
+
+            for p in &bundled_paths {
+                if p.exists() {
+                    if let Ok(canonical) = p.canonicalize() {
+                        eprintln!("[browser] Using bundled node: {}", canonical.display());
+                        return canonical.to_string_lossy().to_string();
+                    }
+                }
             }
         }
     }
 
-    // 2) Dev mode: bundled-node directory
-    let dev_bundled = std::path::Path::new("../scripts/node");
-    if dev_bundled.exists() {
-        return dev_bundled.canonicalize().unwrap().to_string_lossy().to_string();
+    // 2) Dev mode: check ../binaries/node relative to src-tauri
+    let dev_path = std::path::Path::new("../binaries/node");
+    if dev_path.exists() {
+        if let Ok(canonical) = dev_path.canonicalize() {
+            eprintln!("[browser] Using dev bundled node: {}", canonical.display());
+            return canonical.to_string_lossy().to_string();
+        }
     }
 
-    // 3) System node as fallback
+    // 3) Fall back to system-installed node
     let candidates = [
         "/usr/local/bin/node",
         "/opt/homebrew/bin/node",
