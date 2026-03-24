@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "bash scripts/bump-version.sh && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
