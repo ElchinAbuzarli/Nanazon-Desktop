@@ -149,20 +149,17 @@ async function handleLaunch(id, opts) {
       process.stderr.write("🌐 Yeni browser açılıyor...\n");
       const chromeArgs = puppeterConfig ? JSON.parse(puppeterConfig) : [];
 
-      // Turkey fingerprint + anti-detection args
+      // Turkey fingerprint args (exact same as nanazon-app)
       const turkeyFingerprintArgs = [
         "--timezone-id=Europe/Istanbul",
         "--webrtc-ip-handling-policy=disable_non_proxied_udp",
         "--force-webrtc-ip-handling-policy",
-        "--disable-blink-features=AutomationControlled",
-        "--start-maximized",
       ];
       const mergedArgs = [...chromeArgs, ...turkeyFingerprintArgs];
 
       const chromeOptions = {
         headless,
-        defaultViewport: null,
-        ignoreDefaultArgs: ["--enable-automation", "--disable-extensions"],
+        ignoreDefaultArgs: ["--disable-extensions"],
         ignoreHTTPSErrors: true,
         args: mergedArgs,
         executablePath: chromePaths.chrome,
@@ -263,63 +260,6 @@ async function handleLaunch(id, opts) {
       window.RTCPeerConnection.prototype = Native.prototype;
     });
 
-    // Anti-detection patches (backup in case stealth plugin fails in subprocess)
-    await page.evaluateOnNewDocument(() => {
-      // Hide webdriver flag
-      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-
-      // Fake plugins array (real browsers have plugins)
-      Object.defineProperty(navigator, "plugins", {
-        get: () => {
-          const plugins = [
-            { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
-            { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "" },
-            { name: "Native Client", filename: "internal-nacl-plugin", description: "" },
-          ];
-          plugins.length = 3;
-          return plugins;
-        },
-      });
-
-      // Fake languages
-      Object.defineProperty(navigator, "languages", { get: () => ["tr-TR", "tr", "en-US", "en"] });
-      Object.defineProperty(navigator, "language", { get: () => "tr-TR" });
-
-      // Chrome runtime (real Chrome has this)
-      window.chrome = {
-        runtime: {},
-        loadTimes: function () { return {}; },
-        csi: function () { return {}; },
-        app: { isInstalled: false, InstallState: { DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" }, RunningState: { CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" } },
-      };
-
-      // Fix permissions query (headless Chrome returns "prompt" instead of "denied" for notifications)
-      const originalQuery = window.Permissions.prototype.query;
-      window.Permissions.prototype.query = function (parameters) {
-        if (parameters.name === "notifications") {
-          return Promise.resolve({ state: Notification.permission });
-        }
-        return originalQuery.call(this, parameters);
-      };
-
-      // Make toString() of native functions look native
-      const oldCall = Function.prototype.call;
-      function hook(fn, name) {
-        return new Proxy(fn, {
-          get(target, prop) {
-            if (prop === "toString") return () => `function ${name || ""}() { [native code] }`;
-            return Reflect.get(target, prop);
-          },
-        });
-      }
-
-      // Patch iframe contentWindow so it also has our patches
-      const originalAttachShadow = HTMLElement.prototype.attachShadow;
-      HTMLElement.prototype.attachShadow = function () {
-        return originalAttachShadow.apply(this, arguments);
-      };
-    });
-
     await page.setJavaScriptEnabled(true);
     await page.setDefaultNavigationTimeout(0);
 
@@ -327,11 +267,6 @@ async function handleLaunch(id, opts) {
     await client.send("Page.enable");
     await client.send("Network.enable");
     await client.send("Emulation.setTimezoneOverride", { timezoneId: "Europe/Istanbul" });
-
-    // Remove webdriver flag at CDP level (belt-and-suspenders with the JS patch above)
-    await client.send("Page.addScriptToEvaluateOnNewDocument", {
-      source: `Object.defineProperty(navigator, 'webdriver', { get: () => undefined });`,
-    });
 
     // --- Download tracking (same as nanazon-app) ---
     let globalLimitExceeded = false;

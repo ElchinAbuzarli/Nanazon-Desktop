@@ -1,6 +1,6 @@
 [package]
 name = "nanazon-tauri"
-version = "2.0.0"
+version = "2.1.0"
 description = "Nanazon Share - Desktop App"
 authors = ["you"]
 edition = "2021"

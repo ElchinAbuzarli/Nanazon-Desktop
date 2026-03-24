@@ -125,33 +125,59 @@ fn find_script_path() -> Result<String, String> {
     Err("puppeteer-service.cjs not found".into())
 }
 
-/// Find node binary path
+/// Find node binary path — prefer bundled node, then system node
 fn find_node_binary() -> String {
+    // 1) Bundled node next to the script (in Resources for macOS .app)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // macOS .app bundle: Contents/MacOS/../Resources/node
+            let bundled = exe_dir.join("../Resources/node");
+            if bundled.exists() {
+                return bundled.canonicalize().unwrap().to_string_lossy().to_string();
+            }
+            // Tauri _up_ style: Contents/Resources/_up_/scripts/node
+            let bundled = exe_dir.join("../Resources/_up_/scripts/node");
+            if bundled.exists() {
+                return bundled.canonicalize().unwrap().to_string_lossy().to_string();
+            }
+            // Windows/Linux: next to exe
+            let bundled = exe_dir.join("node");
+            if bundled.exists() {
+                return bundled.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // 2) Dev mode: bundled-node directory
+    let dev_bundled = std::path::Path::new("../scripts/node");
+    if dev_bundled.exists() {
+        return dev_bundled.canonicalize().unwrap().to_string_lossy().to_string();
+    }
+
+    // 3) System node as fallback
     let candidates = [
         "/usr/local/bin/node",
         "/opt/homebrew/bin/node",
         "/usr/bin/node",
-        // nvm
-        &format!("{}/.nvm/versions/node", std::env::var("HOME").unwrap_or_default()),
     ];
 
     for c in &candidates {
-        if c.contains(".nvm") {
-            // Find latest nvm node
-            if let Ok(entries) = std::fs::read_dir(c) {
-                let mut versions: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-                versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
-                if let Some(v) = versions.first() {
-                    let node = v.path().join("bin/node");
-                    if node.exists() {
-                        return node.to_string_lossy().to_string();
-                    }
-                }
-            }
-            continue;
-        }
         if std::path::Path::new(c).exists() {
             return c.to_string();
+        }
+    }
+
+    // nvm
+    let home = std::env::var("HOME").unwrap_or_default();
+    let nvm_dir = format!("{}/.nvm/versions/node", home);
+    if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+        let mut versions: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+        versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        if let Some(v) = versions.first() {
+            let node = v.path().join("bin/node");
+            if node.exists() {
+                return node.to_string_lossy().to_string();
+            }
         }
     }
 

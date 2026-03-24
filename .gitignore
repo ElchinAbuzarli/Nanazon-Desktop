@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 .env
 scripts/puppeteer-service.src.cjs
+scripts/node
+bundled-node/
