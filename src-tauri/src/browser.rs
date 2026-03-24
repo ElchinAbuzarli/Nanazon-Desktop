@@ -108,6 +108,39 @@ fn find_script_path() -> Result<String, String> {
 
 /// Find node binary path
 fn find_node_binary() -> String {
+    // 1) Check bundled node binary (inside the app bundle)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let bundled_paths = [
+                // macOS .app bundle: Contents/MacOS/../Resources/_up_/binaries/node
+                exe_dir.join("../Resources/_up_/binaries/node"),
+                exe_dir.join("../Resources/binaries/node"),
+                // Windows/Linux: next to exe
+                exe_dir.join("binaries/node.exe"),
+                exe_dir.join("binaries/node"),
+            ];
+
+            for p in &bundled_paths {
+                if p.exists() {
+                    if let Ok(canonical) = p.canonicalize() {
+                        eprintln!("[browser] Using bundled node: {}", canonical.display());
+                        return canonical.to_string_lossy().to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    // 2) Dev mode: check ../binaries/node relative to src-tauri
+    let dev_path = std::path::Path::new("../binaries/node");
+    if dev_path.exists() {
+        if let Ok(canonical) = dev_path.canonicalize() {
+            eprintln!("[browser] Using dev bundled node: {}", canonical.display());
+            return canonical.to_string_lossy().to_string();
+        }
+    }
+
+    // 3) Fall back to system-installed node
     let candidates = [
         "/usr/local/bin/node",
         "/opt/homebrew/bin/node",
