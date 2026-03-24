@@ -1,8 +1,20 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { connectSocket, emitSecure, listen, sendHandshake } from "../services/socket";
+import { listen as tauriListen } from "@tauri-apps/api/event";
+import { connectSocket, emitSecure, listen, sendHandshake, getToken, getUserId } from "../services/socket";
 import { showToast } from "./Toast";
 import { useI18n, getT } from "../i18n/I18nContext";
+
+// Send auth + packages to puppeteer subprocess after browser launch
+async function syncPuppeteerState() {
+  try {
+    const t = getToken();
+    const u = getUserId();
+    if (t && u) {
+      await invoke("set_browser_auth", { token: t, userId: u }).catch(() => {});
+    }
+  } catch {}
+}
 
 interface LoginProps {
   onLoginSuccess: (token: string, userId: string) => void;
@@ -42,6 +54,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       listen("downloadStatus", (data: { packages: any[] }) => {
         console.log("[socket] Download status received:", data.packages?.length, "packages");
+        // Forward packages to puppeteer subprocess for download limit tracking
+        if (data.packages) {
+          invoke("set_download_packages", { packages: data.packages }).catch((err: any) => {
+            console.log("[socket] set_download_packages (subprocess may not be running yet):", err);
+          });
+        }
       });
 
       await sendHandshake("login");
@@ -134,6 +152,36 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 }
 
 export function initializeSocketListeners(onLogout: (() => void) | ((token: string, userId: string) => void)) {
+  // Listen for download events from puppeteer subprocess (via Tauri events)
+  tauriListen("puppeteer-downloadCount", (event: any) => {
+    const data = event.payload;
+    console.log("[puppeteer] Download count event:", data);
+    emitSecure("updateDownloadCount", {
+      domain: data.domain,
+      package: data.package,
+      currentDownloadCount: data.currentDownloadCount,
+      downloadLimit: data.downloadLimit,
+    });
+  });
+
+  tauriListen("puppeteer-downloadLimitExceeded", (event: any) => {
+    const data = event.payload;
+    console.log("[puppeteer] Download limit exceeded:", data.domain);
+    const t = getT();
+    showToast(t("login.warning"), `Download limit exceeded for ${data.domain}`);
+    // Close browser when limit exceeded
+    invoke("close_browser").catch((err: any) => {
+      console.error("Failed to close browser after limit exceeded:", err);
+    });
+  });
+
+  listen("downloadLimitExceeded", () => {
+    console.log("[socket] Server-side download limit exceeded, closing browser");
+    invoke("close_browser").catch((err: any) => {
+      console.error("Failed to close browser:", err);
+    });
+  });
+
   listen("connect", async () => {
     await sendHandshake("reconnect");
   });
@@ -174,6 +222,7 @@ export function initializeSocketListeners(onLogout: (() => void) | ((token: stri
           cookies: data.cookies || null,
           puppeterConfig: data.puppeterConfig || null,
         });
+        await syncPuppeteerState();
         showToast(t("task.new"), "Browser opened");
         emitSecure("puppeteerLog", { type: "success", message: "Browser başarıyla açıldı" });
       } catch (err: any) {
@@ -195,6 +244,7 @@ export function initializeSocketListeners(onLogout: (() => void) | ((token: stri
           cookies: data.cookies || null,
           puppeterConfig: data.puppeterConfig || null,
         });
+        await syncPuppeteerState();
         showToast(t("task.new"), "Browser opened");
         emitSecure("puppeteerLog", { type: "success", message: "Browser cookies ile açıldı" });
       } catch (err: any) {
@@ -252,6 +302,7 @@ export function initializeSocketListeners(onLogout: (() => void) | ((token: stri
           cookies: data.cookies || null,
           puppeterConfig: data.puppeterConfig || null,
         });
+        await syncPuppeteerState();
       } catch (err: any) {
         console.error("Browser launch failed:", err);
         showToast(t("login.error"), err?.message || String(err));
@@ -269,6 +320,7 @@ export function initializeSocketListeners(onLogout: (() => void) | ((token: stri
           cookies: data.cookies || null,
           puppeterConfig: data.puppeterConfig || null,
         });
+        await syncPuppeteerState();
       } catch (err: any) {
         console.error("Browser launch failed:", err);
         showToast(t("login.error"), err?.message || String(err));

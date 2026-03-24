@@ -218,6 +218,7 @@ fn load_language() -> Result<Option<String>, String> {
 #[tauri::command]
 async fn launch_browser(
     state: tauri::State<'_, Arc<Mutex<browser::BrowserState>>>,
+    app: tauri::AppHandle,
     url: String,
     proxy: Option<String>,
     headless: Option<bool>,
@@ -237,12 +238,13 @@ async fn launch_browser(
         cookies,
         puppeter_config,
     };
-    browser::launch_and_open_page(&state, opts).await
+    browser::launch_and_open_page(&state, opts, app).await
 }
 
 #[tauri::command]
 async fn launch_browser_cookies(
     state: tauri::State<'_, Arc<Mutex<browser::BrowserState>>>,
+    app: tauri::AppHandle,
     url: String,
     proxy: Option<String>,
     headless: Option<bool>,
@@ -262,14 +264,34 @@ async fn launch_browser_cookies(
         cookies,
         puppeter_config,
     };
-    browser::launch_and_open_page_cookies(&state, opts).await
+    browser::launch_and_open_page_cookies(&state, opts, app).await
 }
 
 #[tauri::command]
 async fn get_browser_cookies(
     state: tauri::State<'_, Arc<Mutex<browser::BrowserState>>>,
+    app: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
-    browser::get_cookies_from_page(&state).await
+    browser::get_cookies_from_page(&state, app).await
+}
+
+#[tauri::command]
+async fn set_browser_auth(
+    state: tauri::State<'_, Arc<Mutex<browser::BrowserState>>>,
+    app: tauri::AppHandle,
+    token: String,
+    user_id: String,
+) -> Result<String, String> {
+    browser::set_auth(&state, token, user_id, app).await
+}
+
+#[tauri::command]
+async fn set_download_packages(
+    state: tauri::State<'_, Arc<Mutex<browser::BrowserState>>>,
+    app: tauri::AppHandle,
+    packages: serde_json::Value,
+) -> Result<String, String> {
+    browser::set_download_packages(&state, packages, app).await
 }
 
 #[tauri::command]
@@ -334,6 +356,8 @@ pub fn run() {
             launch_browser_cookies,
             get_browser_cookies,
             close_browser,
+            set_browser_auth,
+            set_download_packages,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

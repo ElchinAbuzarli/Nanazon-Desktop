@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -60,20 +61,38 @@ struct PuppeteerCommand {
     puppeter_config: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     page_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    packages: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    force: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
 struct PuppeteerResponse {
-    id: String,
+    id: Option<String>,
     ok: Option<bool>,
     error: Option<String>,
     cookies: Option<String>,
     #[serde(rename = "pageId")]
     page_id: Option<u64>,
+    // Event fields (used during deserialization routing, not read directly)
+    #[allow(dead_code)]
+    event: Option<String>,
 }
 
 /// Find the puppeteer-service.cjs script path
 fn find_script_path() -> Result<String, String> {
+    // In dev mode, prefer the source file if it exists
+    let src_name = "puppeteer-service.src.cjs";
+    let dev_src_path = std::path::Path::new("../scripts").join(src_name);
+    if dev_src_path.exists() {
+        return Ok(dev_src_path.canonicalize().unwrap().to_string_lossy().to_string());
+    }
+
     let script_name = "puppeteer-service.cjs";
 
     // 1) Dev mode: relative to src-tauri
@@ -150,7 +169,7 @@ fn find_node_binary() -> String {
 }
 
 /// Ensure the puppeteer child process is running
-async fn ensure_process(state: &mut BrowserState) -> Result<(), String> {
+async fn ensure_process(state: &mut BrowserState, app_handle: Option<tauri::AppHandle>) -> Result<(), String> {
     if state.child.is_some() {
         return Ok(());
     }
@@ -159,8 +178,15 @@ async fn ensure_process(state: &mut BrowserState) -> Result<(), String> {
     let node_bin = find_node_binary();
     eprintln!("[browser] Starting puppeteer service: {} (node: {})", script_path, node_bin);
 
+    // Set cwd to the directory containing the script so require() can find node_modules
+    let script_dir = std::path::Path::new(&script_path)
+        .parent()
+        .and_then(|p| p.parent()) // go up from scripts/ to project root
+        .unwrap_or(std::path::Path::new("."));
+
     let mut child = Command::new(&node_bin)
         .arg(&script_path)
+        .current_dir(script_dir)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit()) // Puppeteer logs go to Tauri's stderr
@@ -170,12 +196,27 @@ async fn ensure_process(state: &mut BrowserState) -> Result<(), String> {
     let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
     let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
 
-    // Spawn a background task to read stdout lines into a channel
+    // Channel for command responses (lines with "id" field)
     let (tx, rx) = tokio::sync::mpsc::channel::<String>(100);
+
+    // Spawn a background task to read stdout lines and route them
     tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            // Check if this is an event (has "event" field) or a command response (has "id" field)
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
+                if parsed.get("event").is_some() {
+                    // This is an event from puppeteer — forward to Tauri frontend
+                    if let Some(ref handle) = app_handle {
+                        let event_name = parsed["event"].as_str().unwrap_or("unknown");
+                        let tauri_event = format!("puppeteer-{}", event_name);
+                        let _ = handle.emit(&tauri_event, parsed.clone());
+                    }
+                    continue;
+                }
+            }
+            // Command response — send to channel
             if tx.send(line).await.is_err() {
                 break;
             }
@@ -191,8 +232,8 @@ async fn ensure_process(state: &mut BrowserState) -> Result<(), String> {
 }
 
 /// Send a command to puppeteer and wait for matching response
-async fn send_command(state: &mut BrowserState, cmd: PuppeteerCommand) -> Result<PuppeteerResponse, String> {
-    ensure_process(state).await?;
+async fn send_command(state: &mut BrowserState, cmd: PuppeteerCommand, app_handle: Option<tauri::AppHandle>) -> Result<PuppeteerResponse, String> {
+    ensure_process(state, app_handle).await?;
 
     let cmd_id = cmd.id.clone();
     let json = serde_json::to_string(&cmd).map_err(|e| e.to_string())?;
@@ -218,8 +259,10 @@ async fn send_command(state: &mut BrowserState, cmd: PuppeteerCommand) -> Result
         match tokio::time::timeout(timeout, rx.recv()).await {
             Ok(Some(line)) => {
                 if let Ok(resp) = serde_json::from_str::<PuppeteerResponse>(&line) {
-                    if resp.id == cmd_id || resp.id.starts_with(&cmd_id) {
-                        return Ok(resp);
+                    if let Some(ref resp_id) = resp.id {
+                        if resp_id == &cmd_id || resp_id.starts_with(&cmd_id) {
+                            return Ok(resp);
+                        }
                     }
                 }
                 // Not our response, continue
@@ -230,9 +273,30 @@ async fn send_command(state: &mut BrowserState, cmd: PuppeteerCommand) -> Result
     }
 }
 
+fn make_cmd(id: String, action: &str) -> PuppeteerCommand {
+    PuppeteerCommand {
+        id,
+        action: action.into(),
+        url: None,
+        proxy: None,
+        headless: None,
+        user_agent: None,
+        username: None,
+        password: None,
+        cookies: None,
+        puppeter_config: None,
+        page_id: None,
+        packages: None,
+        token: None,
+        user_id: None,
+        force: None,
+    }
+}
+
 pub async fn launch_and_open_page(
     state: &SharedBrowserState,
     opts: LaunchOptions,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     eprintln!("[browser] launch_and_open_page called: url={}", opts.url);
     let mut guard = state.lock().await;
@@ -240,21 +304,17 @@ pub async fn launch_and_open_page(
     guard.next_id += 1;
     let id = format!("cmd_{}", guard.next_id);
 
-    let cmd = PuppeteerCommand {
-        id,
-        action: "launch".into(),
-        url: Some(opts.url),
-        proxy: opts.proxy,
-        headless: opts.headless,
-        user_agent: opts.user_agent,
-        username: opts.username,
-        password: opts.password,
-        cookies: opts.cookies,
-        puppeter_config: opts.puppeter_config,
-        page_id: None,
-    };
+    let mut cmd = make_cmd(id, "launch");
+    cmd.url = Some(opts.url);
+    cmd.proxy = opts.proxy;
+    cmd.headless = opts.headless;
+    cmd.user_agent = opts.user_agent;
+    cmd.username = opts.username;
+    cmd.password = opts.password;
+    cmd.cookies = opts.cookies;
+    cmd.puppeter_config = opts.puppeter_config;
 
-    let resp = send_command(&mut guard, cmd).await?;
+    let resp = send_command(&mut guard, cmd, Some(app_handle)).await?;
 
     if resp.ok.unwrap_or(false) {
         eprintln!("[browser] Page opened successfully, pageId={:?}", resp.page_id);
@@ -267,6 +327,7 @@ pub async fn launch_and_open_page(
 pub async fn launch_and_open_page_cookies(
     state: &SharedBrowserState,
     opts: LaunchOptions,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     eprintln!("[browser] launch_and_open_page_cookies called: url={}", opts.url);
     let mut guard = state.lock().await;
@@ -274,21 +335,17 @@ pub async fn launch_and_open_page_cookies(
     guard.next_id += 1;
     let id = format!("cmd_{}", guard.next_id);
 
-    let cmd = PuppeteerCommand {
-        id,
-        action: "launchCookies".into(),
-        url: Some(opts.url),
-        proxy: opts.proxy,
-        headless: opts.headless,
-        user_agent: opts.user_agent,
-        username: opts.username,
-        password: opts.password,
-        cookies: opts.cookies,
-        puppeter_config: opts.puppeter_config,
-        page_id: None,
-    };
+    let mut cmd = make_cmd(id, "launchCookies");
+    cmd.url = Some(opts.url);
+    cmd.proxy = opts.proxy;
+    cmd.headless = opts.headless;
+    cmd.user_agent = opts.user_agent;
+    cmd.username = opts.username;
+    cmd.password = opts.password;
+    cmd.cookies = opts.cookies;
+    cmd.puppeter_config = opts.puppeter_config;
 
-    let resp = send_command(&mut guard, cmd).await?;
+    let resp = send_command(&mut guard, cmd, Some(app_handle)).await?;
 
     if resp.ok.unwrap_or(false) {
         Ok("Browser and page ready".into())
@@ -297,27 +354,14 @@ pub async fn launch_and_open_page_cookies(
     }
 }
 
-pub async fn get_cookies_from_page(state: &SharedBrowserState) -> Result<Option<String>, String> {
+pub async fn get_cookies_from_page(state: &SharedBrowserState, app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
     let mut guard = state.lock().await;
 
     guard.next_id += 1;
     let id = format!("cmd_{}", guard.next_id);
 
-    let cmd = PuppeteerCommand {
-        id,
-        action: "getCookies".into(),
-        url: None,
-        proxy: None,
-        headless: None,
-        user_agent: None,
-        username: None,
-        password: None,
-        cookies: None,
-        puppeter_config: None,
-        page_id: None,
-    };
-
-    let resp = send_command(&mut guard, cmd).await?;
+    let cmd = make_cmd(id, "getCookies");
+    let resp = send_command(&mut guard, cmd, Some(app_handle)).await?;
 
     if resp.ok.unwrap_or(false) {
         Ok(resp.cookies)
@@ -333,22 +377,10 @@ pub async fn close_browser(state: &SharedBrowserState) -> Result<String, String>
         guard.next_id += 1;
         let id = format!("cmd_{}", guard.next_id);
 
-        let cmd = PuppeteerCommand {
-            id,
-            action: "close".into(),
-            url: None,
-            proxy: None,
-            headless: None,
-            user_agent: None,
-            username: None,
-            password: None,
-            cookies: None,
-            puppeter_config: None,
-            page_id: None,
-        };
+        let cmd = make_cmd(id, "close");
 
         // Try to send close command, but don't fail if process is already dead
-        let _ = send_command(&mut guard, cmd).await;
+        let _ = send_command(&mut guard, cmd, None).await;
 
         // Kill the child process
         if let Some(ref mut child) = guard.child {
@@ -360,4 +392,59 @@ pub async fn close_browser(state: &SharedBrowserState) -> Result<String, String>
     }
 
     Ok("Browser closed".into())
+}
+
+pub async fn set_auth(
+    state: &SharedBrowserState,
+    auth_token: String,
+    auth_user_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let mut guard = state.lock().await;
+
+    if guard.child.is_none() {
+        return Ok("No puppeteer process running".into());
+    }
+
+    guard.next_id += 1;
+    let id = format!("cmd_{}", guard.next_id);
+
+    let mut cmd = make_cmd(id, "setAuth");
+    cmd.token = Some(auth_token);
+    cmd.user_id = Some(auth_user_id);
+
+    let resp = send_command(&mut guard, cmd, Some(app_handle)).await?;
+
+    if resp.ok.unwrap_or(false) {
+        Ok("Auth updated".into())
+    } else {
+        Err(resp.error.unwrap_or_else(|| "Unknown error".into()))
+    }
+}
+
+pub async fn set_download_packages(
+    state: &SharedBrowserState,
+    packages: serde_json::Value,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let mut guard = state.lock().await;
+
+    // Only send if subprocess is running
+    if guard.child.is_none() {
+        return Ok("No puppeteer process running, packages will be sent on next launch".into());
+    }
+
+    guard.next_id += 1;
+    let id = format!("cmd_{}", guard.next_id);
+
+    let mut cmd = make_cmd(id, "setPackages");
+    cmd.packages = Some(packages);
+
+    let resp = send_command(&mut guard, cmd, Some(app_handle)).await?;
+
+    if resp.ok.unwrap_or(false) {
+        Ok("Packages updated".into())
+    } else {
+        Err(resp.error.unwrap_or_else(|| "Unknown error".into()))
+    }
 }
