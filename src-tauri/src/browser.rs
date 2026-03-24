@@ -74,27 +74,31 @@ struct PuppeteerResponse {
 
 /// Find the puppeteer-service.cjs script path
 fn find_script_path() -> Result<String, String> {
-    // In dev mode, the script is relative to the project root
-    let candidates = [
-        // Relative to src-tauri (dev mode)
-        "../scripts/puppeteer-service.cjs",
-        // Relative to the binary location (built app)
-        "scripts/puppeteer-service.cjs",
-    ];
+    let script_name = "puppeteer-service.cjs";
 
-    for candidate in &candidates {
-        let path = std::path::Path::new(candidate);
-        if path.exists() {
-            return Ok(path.canonicalize().unwrap().to_string_lossy().to_string());
-        }
+    // 1) Dev mode: relative to src-tauri
+    let dev_path = std::path::Path::new("../scripts").join(script_name);
+    if dev_path.exists() {
+        return Ok(dev_path.canonicalize().unwrap().to_string_lossy().to_string());
     }
 
-    // Try relative to current exe
+    // 2) Relative to current exe (Windows build, Linux)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            let script = exe_dir.join("scripts").join("puppeteer-service.cjs");
-            if script.exists() {
-                return Ok(script.to_string_lossy().to_string());
+            // Direct next to exe
+            let p = exe_dir.join("scripts").join(script_name);
+            if p.exists() {
+                return Ok(p.to_string_lossy().to_string());
+            }
+            // macOS .app bundle: exe is in .app/Contents/MacOS/, resources in .app/Contents/Resources/
+            let p = exe_dir.join("../Resources/scripts").join(script_name);
+            if p.exists() {
+                return Ok(p.canonicalize().unwrap().to_string_lossy().to_string());
+            }
+            // Tauri bundles "../scripts/*" as "_up_/scripts/*" in Resources
+            let p = exe_dir.join("../Resources/_up_/scripts").join(script_name);
+            if p.exists() {
+                return Ok(p.canonicalize().unwrap().to_string_lossy().to_string());
             }
         }
     }
